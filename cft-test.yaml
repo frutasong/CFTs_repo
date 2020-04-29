@@ -1,0 +1,647 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template deploys a VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each
+  AZ), and default routes for them in the private subnets.
+Parameters:
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Enter the name of an already existing key pair. 
+    Default: avinash-test
+  VPCName:
+    Type: String
+    Description: Enter the name of the VPC you will be creating
+    Default: test
+  InstanceType:
+    Type: String
+    Description: Enter an instance type for your EC2 instance. 
+    AllowedValues:
+      - t2.micro
+      - t3.small
+      - t3.medium
+      - t2.xlarge
+      - t3a.large
+      - m3.medium
+      - m4.large
+    Default: t2.micro
+  EnvironmentName:
+    Type: String
+    Description: An environment name that is prefixed to resource names
+    Default: test
+  ASGRoleName:
+    Type: String
+    Description: Enter the name for the IAM role name for instances
+    Default: test
+  InternetGatewayName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: test
+  LoadBalancerName:
+    Description: Enter the name of the Loadbalancer
+    Type: String
+    Default: test
+  TargetGroupName:
+    Description: Enter a name for the Targetgroup
+    Type: String
+    Default: test
+  ASGLaunchConfigurationName:
+    Description: Enter a name for the Launch configuration 
+    Type: String
+    Default: test
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.190.0.0/16
+  PublicSubnet1CIDR:
+    Description: >-
+      Please enter the IP range (CIDR notation) for the public subnet in the
+      first Availability Zone
+    Type: String
+    Default: 10.190.10.0/24
+  PublicSubnet2CIDR:
+    Description: >-
+      Please enter the IP range (CIDR notation) for the public subnet in the
+      second Availability Zone
+    Type: String
+    Default: 10.190.11.0/24
+  PrivateSubnet1CIDR:
+    Description: >-
+      Please enter the IP range (CIDR notation) for the pr  qivate subnet in the
+      first Availability Zone
+    Type: String
+    Default: 10.190.20.0/24
+  PrivateSubnet2CIDR:
+    Description: >-
+      Please enter the IP range (CIDR notation) for the private subnet in the
+      second Availability Zone
+    Type: String
+    Default: 10.190.21.0/24
+  PrivateSubnet3CIDR:
+    Description: 
+      Please enter the IP range (CIDR notation) for the second private subnet in the
+      first Availability Zone
+    Type: String
+    Default: 10.190.30.0/24
+  PrivateSubnet4CIDR:
+    Description: 
+      Please enter the IP range (CIDR notation) for the second private subnet in the
+      second Availability Zone
+    Type: String
+    Default: 10.190.31.0/24
+  InstancesDataDiskType:
+    Description: Select the disk type for the EC2 instance.
+    Default: gp2
+    AllowedValues:
+      - standard
+      - gp2
+    Type: String
+  InstancesDataDiskSize:
+    Description: 'Disk size in GB, this must be between 1 and 1024 GB.'
+    Type: Number
+    MinValue: '1'
+    MaxValue: '1024'
+    Default: '10'
+    ConstraintDescription: Your Data Disk Instance size must be between 1 and 1024 GB.
+    
+Mappings:
+  mRegionMap:
+    us-east-1:
+      AMI: ami-002cc39e7bf021a77
+    us-west-2:
+      AMI: ami-0e8c04af2729ff1bb
+
+Resources:
+  VPC: #Creates a VPC for Daks
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+  InternetGateway: #Creates an IGW for the VPC
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref InternetGatewayName
+  InternetGatewayAttachment: # Attach IGW to VPC
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  PublicSubnet1: # create a public subnet for the first AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Public Subnet (AZ1)'
+  PublicSubnet2: # create a public subnet for the second AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Public Subnet (AZ2)'
+  PrivateSubnet1: # create a private subnet for the first AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Subnet (AZ1)'
+  PrivateSubnet2: # create a private subnet for the second AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Subnet (AZ2)'
+  PrivateSubnet3: # create a second private subnet for the first AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PrivateSubnet3CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Subnet (AZ1)'
+  PrivateSubnet4: # create a second private subnet for the second AZ
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PrivateSubnet4CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Subnet (AZ2)' 
+  NatGateway1EIP: # creates an EIP for NatGateway in the public subnet of first AZ
+    Type: 'AWS::EC2::EIP'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway1: # creates a NatGateway in the public subnet of the first AZ
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+      - Key: Name
+        Value: !Sub '${EnvironmentName} AZ1 NatGateway'
+  PublicRouteTable: # Create a Route table for public subnets
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Public Routes'
+  DefaultPublicRoute: # Create a default route for the public route table
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet1RouteTableAssociation: #Associate the Public routeTable to publicSubnet1
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnet2RouteTableAssociation: #Associate the Public routeTable to publicSubnet2
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  PrivateRouteTable1: #Creates a private RouteTable table for private Subnet1 in AZ1
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Routes (AZ1)'
+  DefaultPrivateRoute1: #Create a default route for private RT1 in AZ1
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+  PrivateSubnet1RouteTableAssociation: #Associate private subnet in AZ2 to the private RouteTable1
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+  PrivateRouteTable2: #Creates a private RouteTable for the private subnet2 in AZ2
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} Private Routes (AZ2)'
+  DefaultPrivateRoute2: #Creates a default route for the private RT2 in AZ2
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+  PrivateSubnet2RouteTableAssociation: #Associate private subnet in AZ2 to the private RouteTable1
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+  AppSG: #ELB Security group allowing port 80 and 443 from the load balancer 
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ELB security group for port 80 and 443
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref FrontendSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} AppSeverSG'
+      VpcId: !Ref VPC
+  LoadBalancer: # Creates an internet facing application load balancer
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: !Ref LoadBalancerName
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref FrontendSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} DaksELB'
+  TargetGroup: # Creates a target group for the application load balancer
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 5
+      Name: !Ref TargetGroupName
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} TG'
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: 'lb_cookie'
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '604800'
+      TargetType: instance
+      UnhealthyThresholdCount: 3  
+  HTTPListener: # Specifies a HTTP listener for an Application Load Balancer
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  ASGLaunchConfiguration: #Create launch configuration for application ASG
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Metadata:
+      Comment: Install a simple application
+      'AWS::CloudFormation::Init':
+        config:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [main]
+                  - stack=
+                  - !Ref 'AWS::StackId'
+                  - |+
+
+                  - region=
+                  - !Ref 'AWS::Region'
+                  - |+
+
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [cfn-auto-reloader-hook]
+                  - |
+                    triggers=post.update
+                  - >
+                    path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init
+                  - 'action=/opt/aws/bin/cfn-init -v '
+                  - '         --stack '
+                  - !Ref 'AWS::StackName'
+                  - '         --resource LaunchConfig '
+                  - '         --region '
+                  - !Ref 'AWS::Region'
+                  - |+
+
+                  - |
+                    runas=root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    DependsOn:
+      - InternetGatewayAttachment
+    Properties:
+      AssociatePublicIpAddress: 'false'
+      ImageId: !FindInMap 
+        - mRegionMap
+        - !Ref 'AWS::Region'
+        - AMI
+      InstanceType: !Ref InstanceType
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvdc
+          Ebs:
+            VolumeType: !Ref InstancesDataDiskType
+            VolumeSize: !Ref InstancesDataDiskSize
+      KeyName: !Ref KeyPair
+      LaunchConfigurationName: !Ref ASGLaunchConfigurationName
+      IamInstanceProfile: !Ref ASGInstanceProfile
+      SecurityGroups:
+        - !Ref AppSG
+      UserData: !Base64 
+        Fn::Join:
+          - ''
+          - - |
+              #!/bin/bash
+            - |
+              yum update -y aws-cfn-bootstrap
+              yum update -y
+              yum install httpd -y
+              service httpd start
+              chkconfig httpd on
+              cd /var/www/html
+              host=$(curl http://169.254.169.254/latest/meta-data/hostname)
+              echo $host
+              echo "<html><h1>Hello World from $host</h1></html>" > index.html
+            - '/opt/aws/bin/cfn-init -v '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource LaunchConfig '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+            - '/opt/aws/bin/cfn-signal -e $? '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource WebServerGroup '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |
+              
+  ASGInstanceProfile: # Creates an instance profile for the launch configuration
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: !Sub '${ASGRole}-profile'
+      Roles:
+        - !Ref ASGRole
+  ASGRole: # Creates an IAM role to be associated with the instance profile
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/CloudWatchAgentAdminPolicy'
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy'
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM'
+      RoleName: !Ref ASGRoleName
+  AppASG: # Creates internal autoscaling group for the application instances
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: '1'
+        MaxBatchSize: '1'
+        PauseTime: PT15M
+        WaitOnResourceSignals: 'true'
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   Properties:
+      AvailabilityZones:
+        - 'Fn::GetAtt':
+            - PrivateSubnet1
+            - AvailabilityZone
+        - 'Fn::GetAtt':
+            - PrivateSubnet2
+            - AvailabilityZone
+      DesiredCapacity: '2'
+      LaunchConfigurationName:
+        Ref: ASGLaunchConfiguration
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: true
+          Value: !Sub '${EnvironmentName} AppASG'
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      MaxSize: '3'
+      MinSize: '1'
+
+  WebServerScaleUpPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AppASG
+      Cooldown: '60'
+      ScalingAdjustment: '1'
+  WebServerScaleDownPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AppASG
+      Cooldown: '60'
+      ScalingAdjustment: '-1'
+  CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: Scale-up if CPU > 90% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '2'
+      Threshold: '70'
+      AlarmActions:
+        - !Ref WebServerScaleUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AppASG
+      ComparisonOperator: GreaterThanThreshold
+  CPUAlarmLow:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: Scale-down if CPU < 70% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '2'
+      Threshold: '30'
+      AlarmActions:
+        - !Ref WebServerScaleDownPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AppASG
+      ComparisonOperator: LessThanThreshold
+  FrontendSecurityGroup: # Security group for the public facing load balancer 
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Frontend instance security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName} FrontendSG'
+      VpcId: !Ref VPC
+Outputs:
+  oVPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+  oPublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join 
+      - ','
+      - - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+  oPrivateSubnets:
+    Description: A list of the private subnets
+    Value: !Join 
+      - ','
+      - - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+        - !Ref PrivateSubnet4
+  oPublicSubnet1:
+    Description: A reference to the public subnet in the 1st Availability Zone
+    Value: !Ref PublicSubnet1
+  oPublicSubnet2:
+    Description: A reference to the public subnet in the 2nd Availability Zone
+    Value: !Ref PublicSubnet2
+  oPrivateSubnet1:
+    Description: A reference to the private subnet in the 1st Availability Zone
+    Value: !Ref PrivateSubnet1
+  oPrivateSubnet2:
+    Description: A reference to the private subnet in the 2nd Availability Zone
+    Value: !Ref PrivateSubnet2

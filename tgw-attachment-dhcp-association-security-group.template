@@ -1,0 +1,112 @@
+# (c) 2019 Amazon Web Services, Inc. or its affiliates. All Rights Reserved. This AWS Content is provided subject to the terms of the AWS Customer
+# Agreement available at https://aws.amazon.com/agreement/ or other written agreement between Customer and Amazon Web Services, Inc.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Template that performs a Transit Gateway Attachment and Route creation to a centralized AWS Transit Gateway. It Associated Custom DHCP Optiosn set to the VPC and Creates a Security Group
+Metadata: # Metadata Section
+  AWS::CloudFormation::Interface:
+    ParameterGroups: # Parameter Groups
+    - Label: # Lambda Configuration
+        default: Configuration
+      Parameters: # Label Parameters
+      - pTransitGatewayId
+	  
+      - pS3Bucket
+      - pS3Key
+
+
+Parameters:
+  pTransitGatewayId:
+    Description: Transit Gateway ID
+    Type: String
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+  pDHCPOptionsSetID:
+    Description: The custom DHCP Options set to associate with the new VPC
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: NokiaCustomDHCPOptionSetID
+  pS3Bucket:
+    Description: S3 for the Lambda code.
+    Type: String
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+  pS3Key:
+    Description: The Key location of the Lambda zip.
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9[\\].\/()!:=?#,@+&;{}$-]*
+
+
+Resources:
+  rTransitGatewayAssociationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: RouteTableCFNTemplateUpdate
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+          - Effect: Allow
+            Action:
+            - ec2:CreateTransitGatewayVpcAttachment
+            - ec2:CreateRoute
+            - ec2:DeleteRoute
+            Resource: "arn:aws:ec2:*:*:*"
+          - Effect: Allow
+            Action:
+            - ec2:DescribeTransitGateways
+            - ec2:DescribeVpcs
+            - ec2:DescribeSubnets
+            - ec2:DescribeRouteTables
+            - iam:ListRoles
+            - ec2:AssociateDhcpOptions
+            - ec2:DescribeDhcpOptions
+            - ec2:CreateSecurityGroup
+            - ec2:DescribeSecurityGroups
+            - ec2:AuthorizeSecurityGroupIngress
+            - ec2:AuthorizeSecurityGroupEgress
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            Resource: "arn:aws:iam::*:role/*"
+
+  rLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - rTransitGatewayAssociationLambdaRole
+    Properties:
+      FunctionName: 'Transit-Gateway-Association'
+      Role: !GetAtt rTransitGatewayAssociationLambdaRole.Arn
+      Description: Function to get information needed for Transit gateway association 
+      Handler: index.lambda_handler
+      Timeout: 120
+      Environment:
+        Variables:
+          transit_gateway_id: !Ref pTransitGatewayId
+          dhcp_optionset_id: !Ref pDHCPOptionsSetID
+      Runtime: python3.6
+      Tags:
+      - Key: Name
+        Value: 'Transit-Gateway-Association'
+      Code:
+        S3Bucket: !Ref pS3Bucket
+        S3Key: !Ref pS3Key
+
+  rCustomIvoke:
+    Type: Custom::CreateAccountLambdaInvoke
+    DependsOn: rLambdaFunction
+    Properties:
+      ServiceToken: !GetAtt [ rLambdaFunction, Arn ]
