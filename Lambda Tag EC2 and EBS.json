@@ -1,4 +1,5 @@
 ##LAMBDA FUNCTION (create a lambda function with the below code)
+#AutomateMandatoryTag.py
 
 import boto3
 
@@ -62,6 +63,8 @@ def lambda_handler(event,context):
 
 
 ##CLOUDTRAIL (Copy and Paste in Cloudtrail, create a trail with the below code)
+#Class-event-test.json
+
 {
   "detail-type": [
     "AWS API Call via CloudTrail"
@@ -81,6 +84,8 @@ def lambda_handler(event,context):
 
 
 ##LAMBDA FUNTION ( create lambda_handler with the below code) NB: Don`t use this code for EC2 N EBS tagging
+#auto-update-ec2-ebs.py
+
 import json
 import boto3
 
