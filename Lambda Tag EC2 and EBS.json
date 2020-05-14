@@ -1,0 +1,140 @@
+##LAMBDA FUNCTION (create a lambda function with the below code)
+
+import boto3
+
+
+def get_instance_ids(ec2_resource):
+    id_list = list()
+    for instance in ec2_resource.instances.all():
+        id_list.append(instance.id)
+    return id_list
+
+def get_ebs_ids(ec2_resource):
+    id_list = list()
+    volume_iterator = ec2_resource.volumes.all()
+    for v in volume_iterator:
+        id_list.append(v.id)
+    return id_list
+
+def create_default_tags(ec2_client,ids,tags):
+    response = ec2_client.create_tags(
+            Resources=ids,
+            Tags=tags
+        )
+    if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+        print("Tags Created Successfully")
+
+def lambda_handler(event,context):
+    regions=['us-west-2','us-east-2','us-east-1']
+    for region in regions:
+        ec2_client = boto3.client('ec2', region)
+        ec2_resource = boto3.resource('ec2', region)
+        tags = [
+            {
+                'Key': 'BarometerIT',
+                'Value': 'test'
+            },
+            {
+                'Key': 'costcenter',
+                'Value': 'test'
+            },
+            {
+                'Key': 'Application',
+                'Value': 'test'
+            },
+            {
+                'Key': 'Owner Department',
+                'Value': 'test'
+            },
+            {
+                'Key': 'ResourceType',
+                'Value': 'test'
+            },
+            {
+                'Key': 'Environment',
+                'Value': 'test'
+            }
+        ]
+        instance_ids = get_instance_ids(ec2_resource)
+        create_default_tags(ec2_client, instance_ids, tags)
+        ebs_ids = get_ebs_ids(ec2_resource)
+        create_default_tags(ec2_client, ebs_ids, tags)
+
+
+##CLOUDTRAIL (Copy and Paste in Cloudtrail, create a trail with the below code)
+{
+  "detail-type": [
+    "AWS API Call via CloudTrail"
+  ],
+  "detail": {
+    "eventSource": [
+      "ec2.amazonaws.com",
+      "rds.amazonaws.com"
+    ],
+    "eventName": [
+      "RunInstances",
+      "CreateVolume",
+      "CreateDBInstance"
+    ]
+  }
+}
+
+
+##LAMBDA FUNTION ( create lambda_handler with the below code) NB: Don`t use this code for EC2 N EBS tagging
+import json
+import boto3
+
+
+def lambda_handler(event, context):
+    # TODO implement
+    ec2_ids = []
+    rds_ids = []
+    ebs_ids = []
+    detail = event['detail']
+    print(detail)
+    print(event)
+    tags=[
+        {
+            'Key': 'Name',
+            'Value': 'JJTech'
+        },
+        {
+            'Key': 'BatchNo',
+            'Value': 'Batch-2'
+        }
+    ]
+    eventname = detail['eventName']
+    if eventname == 'RunInstances':
+        ec2_client = boto3.client('ec2')
+        items = detail['responseElements']['instancesSet']['items']
+        for item in items:
+            ec2_ids.append(item['instanceId'])
+            response = ec2_client.create_tags(
+                Resources=ec2_ids,
+                Tags=tags
+            )
+        print(response)
+    if eventname == 'CreateDBInstance':
+        rds_client = boto3.client('rds')
+        db_instance_ARN = detail['responseElements']['dBInstanceArn']
+        # db_instance_name = (detail['responseElements']['dBName'])
+        rds_ids.append(db_instance_ARN)
+        for id in rds_ids:
+            response = rds_client.add_tags_to_resource(
+                ResourceName=id,
+                Tags=tags
+            )
+        print(response)
+
+    if eventname == 'CreateVolume':
+        ec2_client = boto3.client('ec2')
+        ebs_ids.append(detail['responseElements']['volumeId'])
+        for id in ebs_ids:
+            response = ec2_client.create_tags(
+                Resources=ebs_ids,
+                Tags=tags
+            )
+        print(response)
+
+
+    print(event)
